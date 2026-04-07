@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>AI Pose Estimation System</title>
+
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: Arial;
+            text-align: center;
+            color: white;
+
+            background: linear-gradient(-45deg, #0f2027, #203a43, #2c5364, #1e3c72);
+            background-size: 400% 400%;
+            animation: gradientBG 10s ease infinite;
+        }
+
+        @keyframes gradientBG {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        h2 {
+            margin-top: 10px;
+            font-size: 28px;
+            text-shadow: 0 0 10px cyan;
+        }
+
+        video, canvas {
+            position: absolute;
+            top: 70px;
+            left: 50%;
+            transform: translateX(-50%);
+            border-radius: 15px;
+            box-shadow: 0 0 25px rgba(0,255,255,0.5);
+        }
+
+        canvas {
+            border: 2px solid cyan;
+        }
+
+        video {
+            filter: contrast(1.1) brightness(1.1);
+        }
+
+        .info-box {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            padding: 10px 20px;
+            background: rgba(0,0,0,0.3);
+            border-radius: 10px;
+            box-shadow: 0 0 15px cyan;
+        }
+    </style>
+
+</head>
+<body>
+
+<h2>🧠 AI Pose Estimation + Squat Counter</h2>
+
+<div class="info-box">AI Tracking Active 🔥</div>
+
+<video id="video" autoplay playsinline></video>
+<canvas id="canvas"></canvas>
+
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.2.0"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection"></script>
+
+<script>
+let count = 0;
+let stage = "UP";
+
+async function main() {
+
+    const video = document.getElementById("video");
+    const canvas = document.getElementById("canvas");
+    const ctx = canvas.getContext("2d");
+
+    // 🔥 HIGH QUALITY CAMERA
+    const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+            facingMode: "user"
+        }
+    });
+
+    video.srcObject = stream;
+
+    await new Promise(resolve => video.onloadedmetadata = resolve);
+    video.play();
+
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+
+    const detector = await poseDetection.createDetector(
+        poseDetection.SupportedModels.MoveNet,
+        { modelType: poseDetection.movenet.modelType.SINGLEPOSE_LIGHTNING }
+    );
+
+    function drawLine(x1, y1, x2, y2) {
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
+        ctx.strokeStyle = "cyan";
+        ctx.lineWidth = 3;
+        ctx.stroke();
+    }
+
+    async function detect() {
+        const poses = await detector.estimatePoses(video);
+
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        if (poses && poses.length > 0) {
+            const keypoints = poses[0].keypoints;
+
+            // 🔴 Points
+            keypoints.forEach(point => {
+                if (point.score > 0.4) {
+                    ctx.beginPath();
+                    ctx.arc(point.x, point.y, 5, 0, 2 * Math.PI);
+                    ctx.fillStyle = "red";
+                    ctx.fill();
+                }
+            });
+
+            // 🔵 Skeleton
+            const pairs = [
+                [5,7],[7,9],
+                [6,8],[8,10],
+                [5,6],
+                [5,11],[6,12],
+                [11,13],[13,15],
+                [12,14],[14,16]
+            ];
+
+            pairs.forEach(([i,j]) => {
+                const p1 = keypoints[i];
+                const p2 = keypoints[j];
+
+                if (p1.score > 0.4 && p2.score > 0.4) {
+                    drawLine(p1.x, p1.y, p2.x, p2.y);
+                }
+            });
+
+            // 🧠 Squat Counter
+            const hip = keypoints[11];
+            const knee = keypoints[13];
+
+            if (hip && knee) {
+                if (knee.y < hip.y) {
+                    stage = "DOWN";
+                }
+
+                if (knee.y > hip.y && stage === "DOWN") {
+                    stage = "UP";
+                    count++;
+                }
+            }
+
+            // 🟡 Count display
+            ctx.font = "30px Arial";
+            ctx.fillStyle = "yellow";
+            ctx.fillText("Squats: " + count, 50, 100);
+
+            // 🧠 Posture
+            const shoulder = keypoints[5];
+
+            ctx.font = "22px Arial";
+
+            if (shoulder && hip) {
+                if (Math.abs(shoulder.x - hip.x) < 40) {
+                    ctx.fillStyle = "lightgreen";
+                    ctx.fillText("Correct Posture ✅", 50, 50);
+                } else {
+                    ctx.fillStyle = "red";
+                    ctx.fillText("Wrong Posture ❌", 50, 50);
+                }
+            }
+        }
+
+        requestAnimationFrame(detect);
+    }
+
+    detect();
+}
+
+main();
+</script>
+
+</body>
+</html>
